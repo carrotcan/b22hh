@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>B2hsolar - โปรแกรมคำนวณ Inverter ขนาน & แบตเตอรี่ชุด</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;600&display=swap');
+        body { font-family: 'Prompt', sans-serif; background-color: #f4f7f6; margin: 0; padding: 15px; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 15px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .header { text-align: center; border-bottom: 2px solid #f39c12; margin-bottom: 20px; padding-bottom: 10px; }
+        .header h1 { margin: 0; color: #2c3e50; font-size: 22px; }
+        .header p { margin: 5px 0; color: #f39c12; font-weight: bold; font-size: 20px; }
+        
+        /* ปรับ grid ให้รองรับ 6 กล่องได้สวยงาม */
+        .grid-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-bottom: 20px; }
+        .stat-card { padding: 12px; border-radius: 10px; text-align: center; border: 1px solid #ddd; background: #fafafa; display: flex; flex-direction: column; justify-content: center; }
+        .stat-card h4 { margin: 0 0 8px 0; color: #7f8c8d; font-size: 13px; font-weight: normal; }
+        .stat-card .val { font-size: 20px; font-weight: bold; color: #2980b9; }
+        .bg-green { background: #e8f5e9; border-color: #c8e6c9; }
+        .bg-orange { background: #fff3e0; border-color: #ffe0b2; }
+        .bg-purple { background: #f3e5f5; border-color: #e1bee7; } 
+        .bg-blue { background: #e3f2fd; border-color: #bbdefb; } /* สีกล่องชาร์จแบต */
+
+        .alert { padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; font-weight: bold; background: #ffebee; color: #c62828; border: 1px solid #ffcdd2; display: none; }
+
+        .section-title { background: #2c3e50; color: #fff; padding: 8px 15px; border-radius: 5px; margin: 15px 0 10px 0; font-size: 15px; }
+        .input-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; }
+        .form-group { background: #f9fbfd; padding: 12px; border-radius: 8px; border: 1px solid #eceff1; display: flex; flex-direction: column; }
+        label { font-size: 14px; font-weight: bold; margin-bottom: 8px; color: #34495e; }
+        input, select { padding: 10px; border: 1px solid #bdc3c7; border-radius: 5px; font-size: 16px; font-family: 'Prompt'; }
+        
+        .range-wrap { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+        input[type="range"] { flex-grow: 1; }
+        .range-val { width: 50px; text-align: center; font-weight: bold; color: #1565c0; background: #e3f2fd; border-radius: 4px; padding: 4px; }
+
+        .footer { text-align: center; margin-top: 30px; font-size: 12px; color: #bdc3c7; border-top: 1px dashed #eee; padding-top: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header">
+        <h1>⚡ ระบบวิเคราะห์พลังงานโซล่าเซลล์</h1>
+        <p>ช่างเบิ้ม B2hsolar</p>
+    </div>
+
+    <div id="overloadAlert" class="alert">⚠️ คำเตือน: โหลดไฟฟ้าเกินกำลังของ Inverter!</div>
+
+    <div class="grid-stats">
+        <div class="stat-card">
+            <h4>ผลิตสุทธิ (PV)</h4>
+            <div class="val"><span id="outNetPV">0</span> W</div>
+        </div>
+        <div class="stat-card">
+            <h4>แบตใช้งานได้</h4>
+            <div class="val"><span id="outUsableBat">0</span> kWh</div>
+        </div>
+        <div class="stat-card bg-orange">
+            <h4>กำลังชาร์จจริง</h4>
+            <div class="val"><span id="outActualCharge">0</span> W</div>
+        </div>
+        <!-- กล่องเวลาชาร์จที่เพิ่มใหม่ -->
+        <div class="stat-card bg-blue">
+            <h4>เวลาชาร์จจนเต็ม</h4>
+            <div class="val" style="color: #1565c0; font-size: 16px;"><span id="outChargeTime">-</span></div>
+        </div>
+        <div class="stat-card bg-green">
+            <h4>เหลือใช้จริง</h4>
+            <div class="val" style="color: #2e7d32;"><span id="outRemaining">0</span> W</div>
+        </div>
+        <div class="stat-card bg-purple">
+            <h4>กำลังเครื่องที่เหลือ</h4>
+            <div class="val" style="color: #6a1b9a;"><span id="outInvRemaining">0</span> W</div>
+        </div>
+    </div>
+
+    <div class="section-title">ตั้งค่า Inverter & โหลด</div>
+    <div class="input-grid">
+        <div class="form-group">
+            <label>ขนาดเครื่อง Inverter</label>
+            <select id="invType" onchange="calculate()">
+                <option value="6000">รุ่น 6000W (ชาร์จ 5000W / PV 9000W)</option>
+                <option value="12000">รุ่น 12000W (ชาร์จ 10000W / PV 18000W)</option>
+            </select>
+        </div>
+        <div class="form-group">
+            <label>จำนวนเครื่อง (ขนาน)</label>
+            <div class="range-wrap">
+                <input type="range" id="invQtyRange" min="1" max="6" value="1" oninput="syncVal('invQtyRange', 'invQty')">
+                <input type="number" id="invQty" value="1" style="width: 60px;" oninput="syncVal('invQty', 'invQtyRange')">
+            </div>
+        </div>
+        
+        <div class="form-group">
+            <label>โหลดในบ้านตอนกลางวัน (W)</label>
+            <div class="range-wrap">
+                <input type="range" id="homeLoadRange" min="0" max="72000" step="100" value="4000" oninput="syncVal('homeLoadRange', 'homeLoad')">
+                <input type="number" id="homeLoad" value="4000" style="width: 80px;" oninput="syncVal('homeLoad', 'homeLoadRange')">
+            </div>
+        </div>
+    </div>
+
+    <div class="section-title">แผงโซล่าเซลล์</div>
+    <div class="input-grid">
+        <div class="form-group">
+            <label>จำนวนแผง (แผง)</label>
+            <div class="range-wrap">
+                <input type="range" id="panelsRange" min="1" max="84" value="12" oninput="syncText('panelsRange', 'panels')">
+                <div class="range-val"><span id="panelsVal">12</span></div>
+            </div>
+        </div>
+        <div class="form-group">
+            <label>วัตต์ต่อแผง (W)</label>
+            <input type="number" id="pWatts" value="625" oninput="calculate()">
+        </div>
+    </div>
+
+    <div class="section-title">ระบบแบตเตอรี่</div>
+    <div class="input-grid">
+        <div class="form-group">
+            <label>ความจุแบตเตอรี่ (kWh ต่อ 1 ลูก)</label>
+            <input type="number" id="batUnit" value="16.89" step="0.01" oninput="calculate()">
+        </div>
+        <div class="form-group">
+            <label>จำนวนแบตเตอรี่ (กี่ลูก)</label>
+            <div class="range-wrap">
+                <input type="range" id="batQtyRange" min="1" max="20" value="2" oninput="syncText('batQtyRange', 'batQty')">
+                <div class="range-val"><span id="batQtyVal">2</span></div>
+            </div>
+        </div>
+        <!-- เพิ่มเมนูกำหนดการชาร์จตรงนี้ -->
+        <div class="form-group">
+            <label>จำกัดการชาร์จแบตเตอรี่ (W) <span id="showAmps" style="color: #d35400; font-weight: normal;">(~40A)</span></label>
+            <input type="number" id="chargeLimit" value="2100" step="100" oninput="calculate()">
+            <div style="font-size: 11px; color: #7f8c8d; margin-top: 5px;">* คำนวณแอมป์จากระบบแรงดัน 52.5V</div>
+        </div>
+    </div>
+
+    <div class="section-title">ค่าตั้งค่าอื่นๆ</div>
+    <div class="input-grid">
+        <div class="form-group">
+            <label>Loss ระบบ (%)</label>
+            <input type="number" id="loss" value="20" oninput="calculate()">
+        </div>
+        <div class="form-group">
+            <label>ลิมิตดึง SOC (%)</label>
+            <input type="number" id="soc" value="20" oninput="calculate()">
+        </div>
+    </div>
+
+    <div class="footer">
+        © ออกแบบสำหรับ ช่างเบิ้ม B2hsolar | ใช้งานเพื่อประเมินหน้างาน
+    </div>
+</div>
+
+<script>
+    function syncVal(srcId, destId) {
+        document.getElementById(destId).value = document.getElementById(srcId).value;
+        calculate();
+    }
+
+    function syncText(srcId, targetType) {
+        let val = document.getElementById(srcId).value;
+        if(targetType === 'panels') {
+            document.getElementById('panelsVal').innerText = val;
+        } else if (targetType === 'batQty') {
+            document.getElementById('batQtyVal').innerText = val;
+        }
+        calculate();
+    }
+
+    function calculate() {
+        const invType = parseFloat(document.getElementById('invType').value);
+        const invQty = parseFloat(document.getElementById('invQty').value) || 1;
+        const homeLoad = parseFloat(document.getElementById('homeLoad').value) || 0;
+        
+        const panels = parseFloat(document.getElementById('panelsRange').value);
+        const pWatts = parseFloat(document.getElementById('pWatts').value) || 0;
+        
+        const batUnit = parseFloat(document.getElementById('batUnit').value) || 0;
+        const batQty = parseFloat(document.getElementById('batQtyRange').value);
+        
+        // รับค่าลิมิตชาร์จที่ผู้ใช้กรอก
+        const chargeLimitUser = parseFloat(document.getElementById('chargeLimit').value) || 0;
+        
+        const loss = parseFloat(document.getElementById('loss').value) || 0;
+        const soc = parseFloat(document.getElementById('soc').value) || 0;
+
+        // --- คำนวณแสดงผลกระแส (Amps) ---
+        // ใช้สมการ 2100W = 40A -> 52.5V 
+        const calcAmps = chargeLimitUser / 52.5;
+        document.getElementById('showAmps').innerText = "(~" + Math.round(calcAmps) + "A)";
+
+        // ขีดจำกัด
+        const totalInvOut = invType * invQty;
+        const maxChargeInv = (invType === 6000 ? 5000 : 10000) * invQty;
+        const maxPVIn = (invType === 6000 ? 9000 : 18000) * invQty;
+        
+        // หาลิมิตการชาร์จที่แท้จริง (ต้องไม่เกินกำลังเครื่อง และไม่เกินที่ผู้ใช้ตั้ง)
+        const finalMaxCharge = Math.min(maxChargeInv, chargeLimitUser);
+
+        // คำนวณ PV
+        let netPV = (panels * pWatts) * (1 - (loss / 100));
+        if (netPV > maxPVIn) netPV = maxPVIn;
+
+        // คำนวณแบต
+        const totalBat = batUnit * batQty;
+        const usableBat = totalBat * (1 - (soc / 100));
+
+        // พลังงานไหล
+        let excess = netPV - homeLoad;
+        let actualCharge = 0;
+        let remaining = 0;
+
+        if (excess > 0) {
+            actualCharge = Math.min(excess, finalMaxCharge);
+            remaining = excess - actualCharge;
+        }
+
+        // --- ส่วนที่เพิ่มใหม่: คำนวณเวลาชาร์จจนเต็ม ---
+        let chargeTimeText = "-";
+        if (actualCharge > 0) {
+            let chargeHours = (usableBat * 1000) / actualCharge;
+            // ถ้าเวลาชาร์จเกิน 7 ชั่วโมง ให้ขึ้นเตือนว่าไม่เต็มใน 1 วัน
+            if (chargeHours > 7) {
+                chargeTimeText = chargeHours.toFixed(1) + " ช.ม. (ไม่เต็มใน 1 วัน)";
+            } else {
+                chargeTimeText = chargeHours.toFixed(1) + " ช.ม.";
+            }
+        } else if (excess <= 0 && usableBat > 0) {
+            chargeTimeText = "ไม่มีไฟชาร์จ";
+        }
+
+        // กำลังเครื่องที่เหลือ
+        let invRemaining = totalInvOut - homeLoad;
+        if (invRemaining < 0) {
+            invRemaining = 0; 
+        }
+
+        // แสดงผล
+        document.getElementById('outNetPV').innerText = Math.round(netPV).toLocaleString();
+        document.getElementById('outUsableBat').innerText = usableBat.toFixed(2);
+        document.getElementById('outActualCharge').innerText = Math.round(actualCharge).toLocaleString();
+        document.getElementById('outRemaining').innerText = Math.round(remaining).toLocaleString();
+        document.getElementById('outInvRemaining').innerText = Math.round(invRemaining).toLocaleString();
+        
+        // แสดงผลเวลาชาร์จ
+        document.getElementById('outChargeTime').innerText = chargeTimeText;
+
+        // แจ้งเตือน Overload
+        document.getElementById('overloadAlert').style.display = (homeLoad > totalInvOut) ? 'block' : 'none';
+        
+        // อัปเดตตัวเลขกำกับปุ่มเลื่อน
+        document.getElementById('panelsVal').innerText = panels;
+        document.getElementById('batQtyVal').innerText = batQty;
+    }
+
+    // รันการคำนวณครั้งแรกเมื่อเปิดหน้าเว็บ
+    calculate();
+</script>
+
+</body>
+</html>
